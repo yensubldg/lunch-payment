@@ -61,6 +61,7 @@
 </template>
 
 <script setup lang="ts">
+useHead({ title: 'Danh sách Bills - Lunch Payment' });
 interface Bill { id: string; title: string; totalAmount: number; createdAt: string;
   items: Array<{ id: number; name: string; amount: number; paymentStatus: string }>; }
 const router = useRouter(); const bills = ref<Bill[]>([]); const loading = ref(true);

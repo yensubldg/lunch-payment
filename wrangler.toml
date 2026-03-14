@@ -1,0 +1,7 @@
+name = "lunch-payment"
+compatibility_date = "2024-04-05"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lunch"
+database_id = "ede79dad-6094-4e40-9e25-68eb83a64874"

@@ -102,6 +102,7 @@ interface PayResult { checkoutUrl: string; qrCode: string; orderCode: number; }
 
 const route = useRoute(); const billId = route.params.id as string;
 const bill = ref<Bill | null>(null); const loading = ref(true); const error = ref(false); const showImg = ref(false);
+useHead({ title: computed(() => bill.value ? `${bill.value.title} - Lunch Payment` : 'Thanh toán Bill - Lunch Payment') });
 const payModal = ref(false); const payLoading = ref(false); const payData = ref<PayResult | null>(null);
 const payError = ref(''); const payItem = ref<BillItem | null>(null);
 const paidCount = computed(() => bill.value?.items?.filter(i => i.paymentStatus === 'paid').length || 0);

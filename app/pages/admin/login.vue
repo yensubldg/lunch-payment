@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+useHead({ title: 'Đăng nhập Admin - Lunch Payment' });
 const router = useRouter();
 const username = ref(''); const password = ref(''); const error = ref(''); const loading = ref(false);
 onMounted(async () => { try { await $fetch('/api/admin/check'); router.push('/admin'); } catch {} });

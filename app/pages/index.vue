@@ -12,3 +12,7 @@
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+useHead({ title: 'Lunch Payment - Thu tiền cơm trưa' });
+</script>

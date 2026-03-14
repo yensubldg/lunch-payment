@@ -96,6 +96,7 @@
 </template>
 
 <script setup lang="ts">
+useHead({ title: 'Tạo Bill - Lunch Payment' });
 interface ExtractedBill { title: string; items: Array<{ name: string; amount: number }>; totalAmount: number; }
 const router = useRouter();
 const fileInput = ref<HTMLInputElement | null>(null);

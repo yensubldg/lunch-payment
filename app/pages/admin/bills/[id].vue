@@ -101,6 +101,7 @@ interface Bill { id: string; title: string; imageData: string | null; totalAmoun
 const route = useRoute(); const router = useRouter(); const config = useRuntimeConfig();
 const billId = route.params.id as string;
 const bill = ref<Bill | null>(null); const loading = ref(true); const error = ref(false); const copied = ref(false); const deleting = ref(false);
+useHead({ title: computed(() => bill.value ? `Quản lý: ${bill.value.title} - Lunch Payment` : 'Chi tiết Bill - Lunch Payment') });
 const paidCount = computed(() => bill.value?.items?.filter(i => i.paymentStatus === 'paid').length || 0);
 const paidPercent = computed(() => !bill.value?.items?.length ? 0 : (paidCount.value / bill.value.items.length) * 100);
 const paidAmount = computed(() => bill.value?.items?.filter(i => i.paymentStatus === 'paid').reduce((s, i) => s + i.amount, 0) || 0);
