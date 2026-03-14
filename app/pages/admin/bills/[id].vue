@@ -2,8 +2,13 @@
   <div>
     <div class="lp-topbar">
       <div class="lp-container" style="display:flex;align-items:center;justify-content:space-between;">
-        <NuxtLink to="/admin/bills" style="font-size:14px;color:var(--t2);text-decoration:none;display:flex;align-items:center;gap:6px;">← Bills</NuxtLink>
-        <button @click="copyPublicLink" class="lp-btn lp-btn-ghost lp-btn-sm">{{ copied ? '✅ Copied!' : '🔗 Copy Link' }}</button>
+          <NuxtLink to="/admin/bills" style="font-size:14px;color:var(--t2);text-decoration:none;display:flex;align-items:center;gap:6px;">← Bills</NuxtLink>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button @click="deleteBill" :disabled="deleting" class="lp-btn lp-btn-ghost lp-btn-sm" style="color:var(--red);">
+              {{ deleting ? 'Đang xoá...' : '🗑️ Xóa Bill' }}
+            </button>
+            <button @click="copyPublicLink" class="lp-btn lp-btn-ghost lp-btn-sm">{{ copied ? '✅ Copied!' : '🔗 Copy Link' }}</button>
+          </div>
       </div>
     </div>
 
@@ -95,7 +100,7 @@ interface BillItem { id: number; name: string; amount: number; paymentStatus: st
 interface Bill { id: string; title: string; imageData: string | null; totalAmount: number; createdAt: string; items: BillItem[]; }
 const route = useRoute(); const router = useRouter(); const config = useRuntimeConfig();
 const billId = route.params.id as string;
-const bill = ref<Bill | null>(null); const loading = ref(true); const error = ref(false); const copied = ref(false);
+const bill = ref<Bill | null>(null); const loading = ref(true); const error = ref(false); const copied = ref(false); const deleting = ref(false);
 const paidCount = computed(() => bill.value?.items?.filter(i => i.paymentStatus === 'paid').length || 0);
 const paidPercent = computed(() => !bill.value?.items?.length ? 0 : (paidCount.value / bill.value.items.length) * 100);
 const paidAmount = computed(() => bill.value?.items?.filter(i => i.paymentStatus === 'paid').reduce((s, i) => s + i.amount, 0) || 0);
@@ -115,6 +120,17 @@ onMounted(() => { interval = setInterval(fetchBill, 5000); });
 onUnmounted(() => clearInterval(interval));
 async function fetchBill() { try { bill.value = await $fetch<Bill>(`/api/bills/${billId}`); } catch { error.value = true; } finally { loading.value = false; } }
 function copyPublicLink() { navigator.clipboard.writeText(`${config.public.appUrl}/bills/${billId}`); copied.value = true; setTimeout(() => (copied.value = false), 2000); }
+async function deleteBill() {
+  if (!confirm('Bạn có chắc chắn muốn xóa bill này không? Toàn bộ dữ liệu thanh toán sẽ bị mất.')) return;
+  deleting.value = true;
+  try {
+    await $fetch(`/api/admin/bills/${billId}`, { method: 'DELETE' });
+    router.push('/admin/bills');
+  } catch (e: any) {
+    alert('Lỗi xóa bill: ' + (e.data?.statusMessage || e.message));
+    deleting.value = false;
+  }
+}
 function formatMoney(n: number) { return new Intl.NumberFormat('vi-VN').format(n) + 'đ'; }
 function formatDate(d: string) { return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 </script>
