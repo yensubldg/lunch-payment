@@ -86,7 +86,23 @@
                   </span>
                 </div>
               </div>
-              <span style="font-weight:700;font-size:14px;" :style="item.paymentStatus === 'paid' ? 'color:var(--green)' : ''">{{ formatMoney(item.amount) }}</span>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-weight:700;font-size:14px;" :style="item.paymentStatus === 'paid' ? 'color:var(--green)' : ''">{{ formatMoney(item.amount) }}</span>
+                <button
+                  class="lp-btn lp-btn-ghost lp-btn-sm"
+                  :disabled="updatingItemId === item.id"
+                  @click="setManualPaymentStatus(item, item.paymentStatus === 'paid' ? 'pending' : 'paid')"
+                  :style="item.paymentStatus === 'paid' ? 'color:var(--amber)' : 'color:var(--green)'"
+                >
+                  {{
+                    updatingItemId === item.id
+                      ? 'Đang cập nhật...'
+                      : item.paymentStatus === 'paid'
+                        ? 'Đánh dấu chưa TT'
+                        : 'Đánh dấu đã TT'
+                  }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -96,11 +112,12 @@
 </template>
 
 <script setup lang="ts">
-interface BillItem { id: number; name: string; amount: number; paymentStatus: string; paidAt: string | null; }
+interface BillItem { id: number; name: string; amount: number; paymentStatus: 'pending' | 'paid'; paidAt: string | null; }
 interface Bill { id: string; title: string; imageData: string | null; totalAmount: number; createdAt: string; items: BillItem[]; }
 const route = useRoute(); const router = useRouter(); const config = useRuntimeConfig();
 const billId = route.params.id as string;
 const bill = ref<Bill | null>(null); const loading = ref(true); const error = ref(false); const copied = ref(false); const deleting = ref(false);
+const updatingItemId = ref<number | null>(null);
 useHead({ title: computed(() => bill.value ? `Quản lý: ${bill.value.title} - Lunch Payment` : 'Chi tiết Bill - Lunch Payment') });
 const paidCount = computed(() => bill.value?.items?.filter(i => i.paymentStatus === 'paid').length || 0);
 const paidPercent = computed(() => !bill.value?.items?.length ? 0 : (paidCount.value / bill.value.items.length) * 100);
@@ -120,6 +137,20 @@ let interval: ReturnType<typeof setInterval>;
 onMounted(() => { interval = setInterval(fetchBill, 5000); });
 onUnmounted(() => clearInterval(interval));
 async function fetchBill() { try { bill.value = await $fetch<Bill>(`/api/bills/${billId}`); } catch { error.value = true; } finally { loading.value = false; } }
+async function setManualPaymentStatus(item: BillItem, paymentStatus: 'pending' | 'paid') {
+  updatingItemId.value = item.id;
+  try {
+    await $fetch(`/api/admin/bills/${billId}/items/${item.id}/status`, {
+      method: 'PATCH',
+      body: { paymentStatus },
+    });
+    await fetchBill();
+  } catch (e: any) {
+    alert('Lỗi cập nhật trạng thái: ' + (e.data?.statusMessage || e.message));
+  } finally {
+    updatingItemId.value = null;
+  }
+}
 function copyPublicLink() { navigator.clipboard.writeText(`${config.public.appUrl}/bills/${billId}`); copied.value = true; setTimeout(() => (copied.value = false), 2000); }
 async function deleteBill() {
   if (!confirm('Bạn có chắc chắn muốn xóa bill này không? Toàn bộ dữ liệu thanh toán sẽ bị mất.')) return;
