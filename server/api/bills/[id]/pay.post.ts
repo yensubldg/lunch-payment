@@ -1,6 +1,13 @@
 import { eq } from "drizzle-orm";
 import { billItems, bills } from "~~/server/db/schema/sqlite";
 
+function generateOrderCode() {
+  const suffix = Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, "0");
+  return Number(`${Date.now()}${suffix}`);
+}
+
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, "id");
   if (!id) {
@@ -42,9 +49,30 @@ export default defineEventHandler(async (event) => {
 
   const config = useRuntimeConfig();
   const payos = getPayOS();
+  await ensurePayOSWebhookConfigured();
 
-  // Generate a unique order code (PayOS requires positive int up to 9007199254740991)
-  const orderCode = Date.now() % 9007199254740991;
+  // Generate a unique order code (PayOS requires positive int up to 9007199254740991).
+  let orderCode = 0;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = generateOrderCode();
+    const existingOrder = await db
+      .select({ id: billItems.id })
+      .from(billItems)
+      .where(eq(billItems.paymentOrderCode, candidate))
+      .get();
+
+    if (!existingOrder) {
+      orderCode = candidate;
+      break;
+    }
+  }
+
+  if (!orderCode) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "Could not generate unique payment order code",
+    });
+  }
 
   const paymentData = {
     orderCode,

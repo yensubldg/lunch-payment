@@ -4,6 +4,9 @@
       <div class="lp-container" style="display:flex;align-items:center;justify-content:space-between;">
           <NuxtLink to="/admin/bills" style="font-size:14px;color:var(--t2);text-decoration:none;display:flex;align-items:center;gap:6px;">← Bills</NuxtLink>
           <div style="display:flex;align-items:center;gap:8px;">
+            <button @click="syncPayOS" :disabled="syncing" class="lp-btn lp-btn-ghost lp-btn-sm" style="color:var(--accent2);">
+              {{ syncing ? 'Đang sync...' : '🔄 Sync PayOS' }}
+            </button>
             <button @click="deleteBill" :disabled="deleting" class="lp-btn lp-btn-ghost lp-btn-sm" style="color:var(--red);">
               {{ deleting ? 'Đang xoá...' : '🗑️ Xóa Bill' }}
             </button>
@@ -114,10 +117,12 @@
 <script setup lang="ts">
 interface BillItem { id: number; name: string; amount: number; paymentStatus: 'pending' | 'paid'; paidAt: string | null; }
 interface Bill { id: string; title: string; imageData: string | null; totalAmount: number; createdAt: string; items: BillItem[]; }
+interface PayosSyncResult { checked: number; synced: number; failed: number; unchanged: number; }
 const route = useRoute(); const router = useRouter(); const config = useRuntimeConfig();
 const billId = route.params.id as string;
 const bill = ref<Bill | null>(null); const loading = ref(true); const error = ref(false); const copied = ref(false); const deleting = ref(false);
 const updatingItemId = ref<number | null>(null);
+const syncing = ref(false);
 useHead({ title: computed(() => bill.value ? `Quản lý: ${bill.value.title} - Lunch Payment` : 'Chi tiết Bill - Lunch Payment') });
 const paidCount = computed(() => bill.value?.items?.filter(i => i.paymentStatus === 'paid').length || 0);
 const paidPercent = computed(() => !bill.value?.items?.length ? 0 : (paidCount.value / bill.value.items.length) * 100);
@@ -149,6 +154,21 @@ async function setManualPaymentStatus(item: BillItem, paymentStatus: 'pending' |
     alert('Lỗi cập nhật trạng thái: ' + (e.data?.statusMessage || e.message));
   } finally {
     updatingItemId.value = null;
+  }
+}
+async function syncPayOS() {
+  syncing.value = true;
+  try {
+    const result = await $fetch<PayosSyncResult>('/api/admin/payments/sync', {
+      method: 'POST',
+      body: { billId },
+    });
+    await fetchBill();
+    alert(`Sync xong: kiểm tra ${result.checked}, cập nhật ${result.synced}, lỗi ${result.failed}, giữ nguyên ${result.unchanged}`);
+  } catch (e: any) {
+    alert('Lỗi sync PayOS: ' + (e.data?.statusMessage || e.message));
+  } finally {
+    syncing.value = false;
   }
 }
 function copyPublicLink() { navigator.clipboard.writeText(`${config.public.appUrl}/bills/${billId}`); copied.value = true; setTimeout(() => (copied.value = false), 2000); }

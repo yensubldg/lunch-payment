@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { bills, billItems } from "~~/server/db/schema/sqlite";
+import { reconcilePendingPayments } from "~~/server/utils/payos-sync";
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, "id");
@@ -13,6 +14,8 @@ export default defineEventHandler(async (event) => {
   if (!bill) {
     throw createError({ statusCode: 404, statusMessage: "Bill not found" });
   }
+
+  await reconcilePendingPayments({ billId: id });
 
   const items = await db
     .select()
