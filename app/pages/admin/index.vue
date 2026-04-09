@@ -98,40 +98,179 @@
 <script setup lang="ts">
 useHead({ title: 'Tạo Bill - Lunch Payment' });
 interface ExtractedBill { title: string; items: Array<{ name: string; amount: number }>; totalAmount: number; }
+interface UploadImage { preview: string; base64: string; mimeType: string; }
+interface ApiImagePayload { base64: string; mimeType: string; }
+
+const MAX_IMAGE_COUNT = 6;
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_SIDE = 1600;
+const JPEG_QUALITY = 0.82;
+
 const router = useRouter();
 const fileInput = ref<HTMLInputElement | null>(null);
-const images = ref<{ preview: string; base64: string; mimeType: string }[]>([]);
+const images = ref<UploadImage[]>([]);
 const analyzing = ref(false); const saving = ref(false);
 const extractedBill = ref<ExtractedBill | null>(null);
 const createdBillUrl = ref<string | null>(null); const createdBillId = ref<string | null>(null); const copied = ref(false);
 onMounted(async () => { try { await $fetch('/api/admin/check'); } catch { router.push('/admin/login'); } });
 const computedTotal = computed(() => extractedBill.value?.items.reduce((s, i) => s + (i.amount || 0), 0) || 0);
 
-function triggerUpload() { fileInput.value?.click(); }
-function handleFileSelect(e: Event) { const files = (e.target as HTMLInputElement).files; if (files) processFiles(files); }
-function handleDrop(e: DragEvent) { const files = e.dataTransfer?.files; if (files) processFiles(files); }
+function estimateBase64Bytes(base64: string) {
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.ceil((base64.length * 3) / 4) - padding;
+}
 
-function processFiles(files: FileList) {
-  Array.from(files).forEach(file => {
-    if (!file.type.startsWith('image/')) return;
-    const r = new FileReader();
-    r.onload = (e) => {
-      images.value.push({
-        preview: e.target?.result as string,
-        base64: (e.target?.result as string).split(',')[1],
-        mimeType: file.type || 'image/jpeg'
-      });
+function toApiImages(): ApiImagePayload[] {
+  return images.value.map(({ base64, mimeType }) => ({ base64, mimeType }));
+}
+
+function triggerUpload() { fileInput.value?.click(); }
+function handleFileSelect(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = input.files;
+  if (files) {
+    void processFiles(files);
+  }
+  input.value = '';
+}
+function handleDrop(e: DragEvent) {
+  const files = e.dataTransfer?.files;
+  if (files) {
+    void processFiles(files);
+  }
+}
+
+async function processFiles(files: FileList) {
+  const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+  if (imageFiles.length === 0) {
+    return;
+  }
+
+  const availableSlots = MAX_IMAGE_COUNT - images.value.length;
+  if (availableSlots <= 0) {
+    alert(`Chỉ được tải tối đa ${MAX_IMAGE_COUNT} ảnh.`);
+    return;
+  }
+
+  if (imageFiles.length > availableSlots) {
+    alert(`Chỉ giữ ${availableSlots} ảnh đầu tiên. Tối đa ${MAX_IMAGE_COUNT} ảnh mỗi bill.`);
+  }
+
+  const filesToProcess = imageFiles.slice(0, availableSlots);
+  const nextImages: UploadImage[] = [];
+
+  for (const file of filesToProcess) {
+    try {
+      const optimized = await optimizeFile(file);
+      if (optimized) {
+        nextImages.push(optimized);
+      }
+    } catch {
+      alert(`Không đọc được ảnh ${file.name}`);
+    }
+  }
+
+  let totalBytes = images.value.reduce((sum, image) => sum + estimateBase64Bytes(image.base64), 0);
+  for (const image of nextImages) {
+    const imageBytes = estimateBase64Bytes(image.base64);
+    if (totalBytes + imageBytes > MAX_TOTAL_IMAGE_BYTES) {
+      alert('Tổng dung lượng ảnh quá lớn. Vui lòng giảm số lượng hoặc kích thước ảnh.');
+      break;
+    }
+    images.value.push(image);
+    totalBytes += imageBytes;
+  }
+
+  extractedBill.value = null;
+  createdBillUrl.value = null;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        resolve(result);
+        return;
+      }
+      reject(new Error('Invalid file data'));
     };
-    r.readAsDataURL(file);
+    reader.onerror = () => reject(reader.error ?? new Error('Cannot read file'));
+    reader.readAsDataURL(file);
   });
-  extractedBill.value = null; createdBillUrl.value = null;
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Cannot decode image'));
+    image.src = dataUrl;
+  });
+}
+
+async function optimizeImageDataUrl(dataUrl: string, sourceType: string) {
+  const image = await loadImage(dataUrl);
+  const maxSide = Math.max(image.width, image.height);
+  const scale = maxSide > MAX_IMAGE_SIDE ? MAX_IMAGE_SIDE / maxSide : 1;
+
+  if (scale === 1 && sourceType === 'image/jpeg') {
+    return dataUrl;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return dataUrl;
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const prefersPng = sourceType === 'image/png';
+  let optimizedDataUrl = canvas.toDataURL(prefersPng ? 'image/png' : 'image/jpeg', prefersPng ? undefined : JPEG_QUALITY);
+
+  const optimizedBase64 = optimizedDataUrl.split(',')[1] || '';
+  if (estimateBase64Bytes(optimizedBase64) > MAX_IMAGE_BYTES) {
+    optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.72);
+  }
+
+  return optimizedDataUrl;
+}
+
+async function optimizeFile(file: File): Promise<UploadImage | null> {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const optimizedDataUrl = await optimizeImageDataUrl(originalDataUrl, file.type);
+  const [dataPrefix, base64] = optimizedDataUrl.split(',', 2);
+
+  if (!base64) {
+    return null;
+  }
+
+  if (estimateBase64Bytes(base64) > MAX_IMAGE_BYTES) {
+    alert(`Ảnh ${file.name} vẫn quá lớn sau khi nén (tối đa 3MB mỗi ảnh).`);
+    return null;
+  }
+
+  const mimeMatch = /^data:(.*?);base64$/i.exec(dataPrefix);
+  const mimeType = mimeMatch?.[1]?.startsWith('image/') ? mimeMatch[1] : 'image/jpeg';
+
+  return {
+    preview: optimizedDataUrl,
+    base64,
+    mimeType,
+  };
 }
 
 function removeImage(idx: number) { images.value.splice(idx, 1); }
 
 async function analyzeBill() {
   if (images.value.length === 0) return; analyzing.value = true;
-  try { extractedBill.value = await $fetch<ExtractedBill>('/api/admin/analyze', { method: 'POST', body: { images: images.value } }); }
+  try { extractedBill.value = await $fetch<ExtractedBill>('/api/admin/analyze', { method: 'POST', body: { images: toApiImages() } }); }
   catch (e: any) { alert('Lỗi: ' + (e.data?.statusMessage || e.message)); } finally { analyzing.value = false; }
 }
 
@@ -140,7 +279,7 @@ async function saveBill() {
   try {
     const r = await $fetch<{ billId: string; publicUrl: string }>('/api/admin/bills', {
       method: 'POST',
-      body: { images: images.value, manualItems: { title: extractedBill.value.title, items: extractedBill.value.items, totalAmount: computedTotal.value } }
+      body: { images: toApiImages(), manualItems: { title: extractedBill.value.title, items: extractedBill.value.items, totalAmount: computedTotal.value } }
     });
     createdBillUrl.value = r.publicUrl; createdBillId.value = r.billId; images.value = []; extractedBill.value = null;
   } catch (e: any) { alert('Lỗi: ' + (e.data?.statusMessage || e.message)); } finally { saving.value = false; }

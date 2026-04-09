@@ -118,11 +118,26 @@ const parsedImages = computed(() => {
   }
 });
 
-async function fetchBill() { try { bill.value = await $fetch<Bill>(`/api/bills/${billId}`); } catch { error.value = true; } finally { loading.value = false; } }
-onMounted(fetchBill);
-onMounted(() => { if (route.query.paid) setTimeout(fetchBill, 2000); });
+async function fetchBill(includeImage = false) {
+  try {
+    const nextBill = await $fetch<Bill>(`/api/bills/${billId}`, {
+      query: includeImage ? { includeImage: '1' } : undefined,
+    });
+    if (!includeImage && bill.value?.imageData && !nextBill.imageData) {
+      nextBill.imageData = bill.value.imageData;
+    }
+    bill.value = nextBill;
+    error.value = false;
+  } catch {
+    error.value = true;
+  } finally {
+    loading.value = false;
+  }
+}
+onMounted(() => { void fetchBill(true); });
+onMounted(() => { if (route.query.paid) setTimeout(() => { void fetchBill(); }, 2000); });
 let refreshInterval: ReturnType<typeof setInterval>;
-onMounted(() => { refreshInterval = setInterval(fetchBill, 5000); });
+onMounted(() => { refreshInterval = setInterval(() => { void fetchBill(); }, 5000); });
 onUnmounted(() => clearInterval(refreshInterval));
 
 let payCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -139,7 +154,7 @@ function startPayCheck(itemId: number) {
   }, 3000);
 }
 function stopPayCheck() { if (payCheckInterval) { clearInterval(payCheckInterval); payCheckInterval = null; } }
-function closePay() { stopPayCheck(); payModal.value = false; payData.value = null; payError.value = ''; payItem.value = null; fetchBill(); }
+function closePay() { stopPayCheck(); payModal.value = false; payData.value = null; payError.value = ''; payItem.value = null; void fetchBill(); }
 onUnmounted(() => stopPayCheck());
 function formatMoney(n: number) { return new Intl.NumberFormat('vi-VN').format(n) + 'đ'; }
 function formatDate(d: string) { return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }

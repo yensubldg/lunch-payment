@@ -137,11 +137,26 @@ const parsedImages = computed(() => {
     return [bill.value.imageData];
   }
 });
-onMounted(async () => { try { await $fetch('/api/admin/check'); } catch { router.push('/admin/login'); return; } await fetchBill(); });
 let interval: ReturnType<typeof setInterval>;
-onMounted(() => { interval = setInterval(fetchBill, 5000); });
+onMounted(async () => { try { await $fetch('/api/admin/check'); } catch { router.push('/admin/login'); return; } await fetchBill(true); });
+onMounted(() => { interval = setInterval(() => { void fetchBill(); }, 5000); });
 onUnmounted(() => clearInterval(interval));
-async function fetchBill() { try { bill.value = await $fetch<Bill>(`/api/bills/${billId}`); } catch { error.value = true; } finally { loading.value = false; } }
+async function fetchBill(includeImage = false) {
+  try {
+    const nextBill = await $fetch<Bill>(`/api/bills/${billId}`, {
+      query: includeImage ? { includeImage: '1' } : undefined,
+    });
+    if (!includeImage && bill.value?.imageData && !nextBill.imageData) {
+      nextBill.imageData = bill.value.imageData;
+    }
+    bill.value = nextBill;
+    error.value = false;
+  } catch {
+    error.value = true;
+  } finally {
+    loading.value = false;
+  }
+}
 async function setManualPaymentStatus(item: BillItem, paymentStatus: 'pending' | 'paid') {
   updatingItemId.value = item.id;
   try {

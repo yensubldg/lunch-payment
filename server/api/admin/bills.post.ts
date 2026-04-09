@@ -1,18 +1,23 @@
 import { nanoid } from "nanoid";
 import { bills, billItems } from "~~/server/db/schema/sqlite";
+import { normalizeAndValidateImages } from "~~/server/utils/image-input";
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event);
 
   const body = await readBody(event);
-  const { images, manualItems } = body || {};
+  const { images: rawImages, manualItems } = body || {};
+
+  const images = Array.isArray(rawImages) && rawImages.length > 0
+    ? normalizeAndValidateImages(rawImages)
+    : [];
 
   let extractedData;
 
   if (manualItems) {
     // Allow manual entry / editing
     extractedData = manualItems;
-  } else if (images && Array.isArray(images) && images.length > 0) {
+  } else if (images.length > 0) {
     // Use GenAI to extract bill data from image
     extractedData = await extractBillsFromImages(images);
   } else {
@@ -25,9 +30,10 @@ export default defineEventHandler(async (event) => {
   const db = useDrizzle();
   const billId = nanoid(10);
 
-  // Default to storing the first image, or stringify if array
-  const imageDataString = images && images.length > 0
-    ? JSON.stringify(images.map((img: any) => `data:${img.mimeType || "image/jpeg"};base64,${img.base64}`))
+  // Store only the first image to avoid large payloads in API responses.
+  const firstImage = images[0];
+  const imageDataString = firstImage
+    ? `data:${firstImage.mimeType};base64,${firstImage.base64}`
     : null;
 
   // Insert bill

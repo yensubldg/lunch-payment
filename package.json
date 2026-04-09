@@ -4,6 +4,12 @@
   "private": true,
   "scripts": {
     "build": "nuxt build",
+    "cleanup:bill-images": "node scripts/cleanup-bill-images.mjs",
+    "cleanup:bill-images:apply": "node scripts/cleanup-bill-images.mjs --apply",
+    "cleanup:d1:backup": "sh -c 'mkdir -p backups && npx -y wrangler d1 export lunch --remote --output backups/lunch-$(date +%F-%H%M%S).sql'",
+    "cleanup:d1:report": "npx -y wrangler d1 execute lunch --remote --file scripts/sql/d1-image-cleanup-report.sql --json",
+    "cleanup:d1:apply": "npx -y wrangler d1 execute lunch --remote --file scripts/sql/d1-image-cleanup-apply.sql --yes",
+    "cleanup:d1:verify": "npx -y wrangler d1 execute lunch --remote --file scripts/sql/d1-image-cleanup-verify.sql --json",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
